@@ -17,6 +17,7 @@ const SYSTEM =
 
 const cache = new Map<string, string>();
 const hits: number[] = [];
+let backoffUntil = 0; // after an upstream 429, serve grounded drafts instantly instead of retrying
 
 async function rephrase(message: string, draft: string, history: { from: string; text: string }[]): Promise<{ text: string | null; reason?: string }> {
   const user = `Recent conversation:\n${history.map((h) => `${h.from}: ${h.text}`).join("\n") || "(none)"}\n\nCustomer message:\n${isolate("customer_message", message)}\n\nDRAFT reply:\n${draft}`;
@@ -57,13 +58,17 @@ export async function POST(req: Request) {
   if (cache.has(key)) return NextResponse.json({ reply: cache.get(key), source: "llm", cached: true });
 
   const now = Date.now();
+  if (now < backoffUntil) return NextResponse.json({ reply: draft, source: "rules", reason: "upstream_backoff" });
   while (hits.length && now - hits[0] > 60_000) hits.shift();
   if (hits.length >= Number(process.env.CHAT_RATE_PER_MIN || 30)) return NextResponse.json({ reply: draft, source: "rules", reason: "rate limited" });
   hits.push(now);
 
   try {
     const { text, reason } = await rephrase(message, draft, (body?.history ?? []).slice(-6).map((h) => ({ from: h.from, text: String(h.text).slice(0, 300) })));
-    if (!text) return NextResponse.json({ reply: draft, source: "rules", reason });
+    if (!text) {
+      if (reason?.endsWith("429")) backoffUntil = Date.now() + 60_000;
+      return NextResponse.json({ reply: draft, source: "rules", reason });
+    }
     // numeric validation: every figure in the rephrased reply must appear in the grounded draft or facts
     const check = validateFigures(text, numbersIn({ draft, facts: body?.facts ?? null }));
     if (!check.ok || text.length > 700) return NextResponse.json({ reply: draft, source: "rules", rejected: check.bad });

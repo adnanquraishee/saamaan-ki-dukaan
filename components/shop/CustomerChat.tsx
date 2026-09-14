@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { respond as answer, type Action, type Card, type Memory, type OrderView, type ProductView } from "@/lib/shop/assistant";
+import { TEMPLATE_INTENTS, respond as answer, type Action, type Card, type Memory, type OrderView, type ProductView } from "@/lib/shop/assistant";
 import { useCart } from "@/lib/shop/cart";
 import { inr, sendShopCommand, useShop } from "@/lib/shop/useShop";
 import { ProductArt } from "./ProductArt";
@@ -73,7 +73,8 @@ export function CustomerChat() {
     setMemory(reply.memory);
     let replyText = reply.text;
     let source: Message["source"] = "rules";
-    try {
+    if (TEMPLATE_INTENTS.has(reply.intent)) await new Promise((r) => setTimeout(r, 350)); // brief, natural typing pause
+    else try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 7000);
       const r = await fetch("/api/customer-chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: clean, draft: reply.text, facts: reply.facts, history }), signal: ctrl.signal });

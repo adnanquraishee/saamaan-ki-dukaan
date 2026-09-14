@@ -111,6 +111,9 @@ export type Card = { kind: "order"; order: OrderView } | { kind: "orders"; order
 
 export type Action = { type: "link"; label: string; href: string } | { type: "prompt"; label: string; prompt: string } | { type: "add"; label: string; sku: string } | { type: "ticket"; label: string; category: string };
 
+/** Intents whose replies are hand-written policy/template text; rephrasing adds latency and quota for no gain. */
+export const TEMPLATE_INTENTS = new Set<Intent>(["greeting", "thanks", "goodbye", "ack", "promo", "return_policy", "exchange", "payment_help", "shipping_policy", "human_handoff", "unsafe_request", "out_of_scope", "help", "unknown"]);
+
 export interface Reply {
   intent: Intent;
   text: string;
