@@ -1,0 +1,42 @@
+{
+  "name": "anvaya-control-tower",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "NODE_OPTIONS=--max-old-space-size=4096 next dev -H 0.0.0.0 -p 7100",
+    "dev:ecommerce": "NODE_OPTIONS=--max-old-space-size=4096 next dev -H 0.0.0.0 -p 7100",
+    "dev:backend": "NODE_OPTIONS=--max-old-space-size=4096 next dev -H 0.0.0.0 -p 7150",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p 7100",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "seed": "tsx scripts/generate-seed.ts",
+    "corpus": "tsx scripts/generate-corpus.ts",
+    "train": "python3 scripts/train/train.py",
+    "embed": "tsx scripts/embed-corpus.ts",
+    "data": "npm run seed && npm run train && npm run corpus && npm run embed && npm run warm",
+    "demo": "next build && next start -H 0.0.0.0",
+    "warm": "tsx scripts/generate-warm-state.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "autoprefixer": "^10.6.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.35",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.14",
+    "tsx": "^4.23.13",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
+    "immer": "^10.1.1",
+    "next": "^14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.25.76",
+    "zustand": "^4.5.5"
+  }
+}

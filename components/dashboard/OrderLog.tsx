@@ -1,0 +1,26 @@
+"use client";
+import { useMemo, useState } from "react";
+import { useApp } from "@/lib/store/store";
+import type { OrderStatus } from "@/lib/types";
+import { Panel, inrc } from "./ui";
+
+const labels: Record<OrderStatus, string> = { placed: "New", allocated: "Allocated", shipped: "Shipped", delivered: "Delivered", rto: "RTO", returned: "Returned", backordered: "Backorder", cancelled: "Cancelled" };
+const tones: Record<OrderStatus, string> = { placed: "text-tower-cyan", allocated: "text-tower-violet", shipped: "text-tower-amber", delivered: "text-tower-green", rto: "text-tower-red", returned: "text-tower-red", backordered: "text-tower-amber", cancelled: "text-tower-dim" };
+
+export function OrderLog() {
+  const orders = useApp((s) => s.orders);
+  const tick = useApp((s) => s.clock.tick);
+  const [filter, setFilter] = useState<"all" | "attention">("all");
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const rows = useMemo(() => orders.slice().reverse().filter((o) => {
+    const haystack = [o.id, o.customerName, o.pincode, o.courierId, ...o.lines.map((line) => line.sku)].join(" ").toLowerCase();
+    return (filter === "all" || ["backordered", "rto", "returned", "cancelled"].includes(o.status)) && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
+  }).slice(0, 12), [orders, filter, query]);
+  const selected = rows.find((o) => o.id === selectedId) ?? rows[0];
+  return <Panel title="Order log" right={<div className="flex flex-wrap items-center justify-end gap-2 font-mono text-[10px]"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="search order, customer, SKU…" className="w-48 rounded-sm border border-tower-line bg-[#0b1219] px-2 py-1 text-[10px] text-white outline-none focus:border-tower-cyan" /><button onClick={() => setFilter("all")} className={filter === "all" ? "text-tower-cyan" : "text-tower-dim"}>all ({orders.length})</button><span className="text-tower-line">·</span><button onClick={() => setFilter("attention")} className={filter === "attention" ? "text-tower-amber" : "text-tower-dim"}>exceptions</button></div>} bodyClass="overflow-x-auto scroll-thin">
+    {rows.length === 0 ? <div className="p-5 text-center font-mono text-xs text-tower-dim">No orders observed yet. New orders will appear here as the live engine runs.</div> : <table className="w-full min-w-[680px] font-mono text-[11px]"><thead><tr className="text-left text-[10px] uppercase tracking-wider text-tower-dim"><th className="px-3 py-2 font-normal">order</th><th className="px-3 py-2 font-normal">customer / route</th><th className="px-3 py-2 font-normal">items</th><th className="px-3 py-2 text-right font-normal">value</th><th className="px-3 py-2 font-normal">status</th><th className="px-3 py-2 text-right font-normal">promise</th></tr></thead><tbody>{rows.map((o) => { const exception = ["backordered", "rto", "returned", "cancelled"].includes(o.status); return <tr key={o.id} onClick={() => setSelectedId(o.id)} className={`cursor-pointer border-t border-tower-line/60 hover:bg-white/[0.04] ${selected?.id === o.id ? "bg-tower-cyan/[0.06]" : ""}`}><td className="px-3 py-2 text-white">{o.id}<div className="text-[10px] text-tower-dim">tick {o.tick}{o.source === "storefront" ? " · storefront" : " · system"}</div></td><td className="max-w-[180px] px-3 py-2 text-[#aebdcc]">{o.customerName}<div className="text-[10px] text-tower-dim">{o.pincode} · {o.paymentMode.toUpperCase()}</div></td><td className="px-3 py-2 text-[#aebdcc]">{o.lines.reduce((sum, line) => sum + line.qty, 0)} unit{o.lines.reduce((sum, line) => sum + line.qty, 0) === 1 ? "" : "s"}</td><td className="num px-3 py-2 text-right text-white">{inrc(o.value)}</td><td className={`px-3 py-2 font-semibold ${exception ? "text-tower-amber" : tones[o.status]}`}>{labels[o.status]}</td><td className="num px-3 py-2 text-right text-tower-dim">{o.promisedDays ? `${o.promisedDays}d` : "—"}</td></tr>; })}</tbody></table>}
+    {selected && <div className="border-t border-tower-cyan/20 bg-[#0a141d] p-3"><div className="flex flex-wrap items-baseline justify-between gap-2"><span className="font-mono text-sm font-semibold text-white">{selected.id}</span><span className={`font-mono text-xs font-semibold ${tones[selected.status]}`}>{labels[selected.status]}</span></div><div className="mt-3 grid gap-2 text-[11px] text-tower-dim sm:grid-cols-3"><div>Customer <b className="text-[#aebdcc]">{selected.customerName}</b><br />{selected.pincode} · {selected.region}</div><div>Fulfillment <b className="text-[#aebdcc]">{selected.warehouseId ?? "Awaiting allocation"}</b><br />Courier: {selected.courierId ?? "Not assigned"}</div><div>Value <b className="text-white">{inrc(selected.value)}</b><br />{selected.paymentMode.toUpperCase()} · promise {selected.promisedDays ? `${selected.promisedDays} days` : "pending"}</div></div><div className="mt-3 font-mono text-[10px] text-tower-dim">Items: {selected.lines.map((line) => `${line.sku} ×${line.qty}`).join(" · ")}{selected.rto ? ` · RTO score ${Math.round(selected.rto.p * 100)}%` : ""}</div></div>}
+    <div className="border-t border-tower-line px-3 py-2 font-mono text-[10px] text-tower-dim">Showing latest {Math.min(rows.length, 12)} · live at cycle {tick}. Use exceptions to focus on service-risk orders.</div>
+  </Panel>;
+}

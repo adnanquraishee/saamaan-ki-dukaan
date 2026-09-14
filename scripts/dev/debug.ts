@@ -1,0 +1,21 @@
+import { produce } from "immer";
+import { pricingAgent } from "../../lib/agents/pricing";
+import { returnsAgent } from "../../lib/agents/returns";
+import { cashPosition } from "../../lib/agents/finance";
+import { floorPrice } from "../../lib/agents/shared";
+import { runCycleSync, senseStage, twinStage } from "../../lib/engine/cycleSync";
+import { createInitialState, type AppState } from "../../lib/store/state";
+
+let s: AppState = createInitialState();
+s = twinStage(senseStage(s));
+const p = s.catalog.find((x) => x.sku === "APP-003")!;
+console.log("APP-003", p.basePrice, "floor", floorPrice(p), "rr", p.returnRate, "sizing", p.sizingIssue);
+console.log("pricing@0", pricingAgent.decide(pricingAgent.perceive(s)).map((x) => `${x.action.type} ${(x.action as any).sku} ${(x.action as any).reason}`));
+console.log("returns@0", returnsAgent.decide(returnsAgent.perceive(s)).map((x) => `${x.action.type} ${(x.action as any).sku}`));
+s = createInitialState();
+for (let i = 0; i < 240; i++) s = runCycleSync(s);
+console.log("pendingReturns", s.pendingReturns.length, "delivered", s.orders.filter((o) => o.status === "delivered").length, "shipments", s.shipments.filter((x) => x.outcome === "delivered").length);
+console.log("cash", cashPosition(s));
+const sizes = Object.entries(s).map(([k, v]) => [k, Math.round(JSON.stringify(v).length / 1024)] as const).sort((a, b) => b[1] - a[1]).slice(0, 12);
+console.log(sizes);
+void produce;

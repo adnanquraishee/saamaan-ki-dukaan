@@ -1,0 +1,288 @@
+{
+ "version": 1,
+ "forecast": {
+  "type": "ridge",
+  "target": "units / (rolling28_mean + 0.5)",
+  "features": [
+   "lag1",
+   "lag7",
+   "lag14",
+   "lag28",
+   "roll7",
+   "roll7std",
+   "dow_1",
+   "dow_2",
+   "dow_3",
+   "dow_4",
+   "dow_5",
+   "dow_6",
+   "festival",
+   "promo",
+   "log_price_ratio",
+   "fest_apparel",
+   "fest_electronics",
+   "fest_home",
+   "fest_personal_care"
+  ],
+  "coef": [
+   0.024635,
+   -0.002499,
+   0.008957,
+   0.01255,
+   0.16953,
+   -0.113182,
+   -0.292277,
+   -0.286387,
+   -0.283846,
+   -0.245783,
+   -0.168758,
+   -0.038069,
+   0.13549,
+   -0.030129,
+   -1.624947,
+   0.13314,
+   0.025233,
+   0.035684,
+   -0.058567
+  ],
+  "intercept": 0.912241,
+  "sigma": {
+   "a": 1.104,
+   "b": 0.5397
+  },
+  "relErrorQuantiles": {
+   "0.5": -0.1245,
+   "0.8": 0.581,
+   "0.85": 0.7786,
+   "0.9": 1.0351,
+   "0.95": 1.4464,
+   "0.975": 1.8822,
+   "0.99": 2.4141
+  },
+  "hourCurve": [
+   0.01911,
+   0.00933,
+   0.00533,
+   0.00578,
+   0.00711,
+   0.00911,
+   0.016,
+   0.03156,
+   0.04089,
+   0.046,
+   0.05289,
+   0.05022,
+   0.04978,
+   0.05644,
+   0.05489,
+   0.04511,
+   0.04733,
+   0.05511,
+   0.05444,
+   0.06356,
+   0.08622,
+   0.08333,
+   0.07,
+   0.04044
+  ],
+  "holdoutDays": 90,
+  "metrics": {
+   "ridge_exported": {
+    "mape": 0.6278,
+    "wape": 0.5275
+   },
+   "gbm_reference": {
+    "mape": 0.629,
+    "wape": 0.5264
+   },
+   "naive_lag1": {
+    "mape": 0.8902,
+    "wape": 0.7117
+   },
+   "seasonal_naive_lag7": {
+    "mape": 0.9043,
+    "wape": 0.7267
+   },
+   "moving_avg_7": {
+    "mape": 0.6961,
+    "wape": 0.5703
+   },
+   "moving_avg_28": {
+    "mape": 0.6686,
+    "wape": 0.5518
+   },
+   "festival_days_wape": {
+    "ridge_exported": 0.5216,
+    "moving_avg_7": 0.5105,
+    "naive_lag1": 0.6128
+   }
+  }
+ },
+ "elasticity": {
+  "apparel_hi": {
+   "slope": -1.4498,
+   "intercept": -0.1253,
+   "n": 10400,
+   "trueMean": -1.9512
+  },
+  "apparel_lo": {
+   "slope": -2.3792,
+   "intercept": -0.0018,
+   "n": 10400,
+   "trueMean": -1.9952
+  },
+  "electronics_hi": {
+   "slope": -1.7049,
+   "intercept": -0.1819,
+   "n": 7800,
+   "trueMean": -1.5118
+  },
+  "electronics_lo": {
+   "slope": -1.4294,
+   "intercept": -0.0364,
+   "n": 7800,
+   "trueMean": -1.5094
+  },
+  "home_hi": {
+   "slope": -1.2439,
+   "intercept": -0.1926,
+   "n": 8320,
+   "trueMean": -1.2159
+  },
+  "home_lo": {
+   "slope": -1.1058,
+   "intercept": 0.0721,
+   "n": 7280,
+   "trueMean": -1.2656
+  },
+  "personal_care_hi": {
+   "slope": -0.5434,
+   "intercept": 0.0022,
+   "n": 7280,
+   "trueMean": -0.8043
+  },
+  "personal_care_lo": {
+   "slope": -1.4284,
+   "intercept": 0.0898,
+   "n": 3120,
+   "trueMean": -0.806
+  }
+ },
+ "rto": {
+  "features": [
+   "cod",
+   "tier2",
+   "tier3",
+   "log_value",
+   "cat_electronics",
+   "cat_home",
+   "cat_personal_care",
+   "courier_CR-KAVERI",
+   "courier_CR-NORTHSTAR",
+   "courier_CR-DAKSHIN",
+   "cart_size",
+   "first_time"
+  ],
+  "weights": {
+   "cod": 1.19148,
+   "tier2": 0.34546,
+   "tier3": 0.914,
+   "log_value": 0.21116,
+   "cat_electronics": -0.13238,
+   "cat_home": -0.26797,
+   "cat_personal_care": -0.21388,
+   "courier_CR-KAVERI": 0.81693,
+   "courier_CR-NORTHSTAR": 0.52492,
+   "courier_CR-DAKSHIN": 0.71183,
+   "cart_size": -0.08523,
+   "first_time": 0.35427
+  },
+  "intercept": -3.77551,
+  "logValueRef": 6.90776,
+  "reference": "metro, prepaid, apparel, Vayu Express, \u20b91,000, repeat customer",
+  "metrics": {
+   "auc": 0.7108,
+   "brier": 0.1162,
+   "base_rate": 0.1464,
+   "cod_rto_rate": 0.1977,
+   "prepaid_rto_rate": 0.0676,
+   "n_train": 48000,
+   "n_test": 12000
+  }
+ },
+ "anomaly": {
+  "velocityRatio": {
+   "mean": 0.95025,
+   "std": 0.68598,
+   "p95": 2.24,
+   "p99": 3.08244,
+   "p999": 4.20294,
+   "isolationForest": {
+    "low": 0.0,
+    "high": 3.0781
+   }
+  },
+  "courierSlaRatio": {
+   "CR-DAKSHIN": {
+    "mean": 1.12524,
+    "std": 0.32438,
+    "p95": 1.739,
+    "p99": 2.0041,
+    "p999": 2.21559,
+    "isolationForest": {
+     "low": 0.5684,
+     "high": 2.03635
+    }
+   },
+   "CR-KAVERI": {
+    "mean": 1.08775,
+    "std": 0.24261,
+    "p95": 1.53105,
+    "p99": 1.65901,
+    "p999": 1.92551,
+    "isolationForest": {
+     "low": 0.705,
+     "high": 1.65907
+    }
+   },
+   "CR-NORTHSTAR": {
+    "mean": 1.10446,
+    "std": 0.29209,
+    "p95": 1.662,
+    "p99": 1.92705,
+    "p999": 2.066,
+    "isolationForest": {
+     "low": 0.60025,
+     "high": 1.92862
+    }
+   },
+   "CR-VAYU": {
+    "mean": 1.07575,
+    "std": 0.23,
+    "p95": 1.49215,
+    "p99": 1.635,
+    "p999": 1.67,
+    "isolationForest": {
+     "low": 0.705,
+     "high": 1.63449
+    }
+   }
+  },
+  "supplierLeadDeviation": {
+   "mean": 0.58152,
+   "std": 2.54761,
+   "p95": 4.782,
+   "p99": 11.8651,
+   "p999": 19.18346,
+   "isolationForest": {
+    "low": -4.0,
+    "high": 11.87144
+   }
+  },
+  "zScore": {
+   "warn": 3.0,
+   "critical": 4.5
+  },
+  "note": "1-D IsolationForest (contamination 1%) decision boundaries exported as inlier ranges; runtime compares raw values to these bounds and to rolling z-scores."
+ }
+}

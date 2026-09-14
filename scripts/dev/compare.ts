@@ -1,0 +1,18 @@
+import { runCycleSync } from "../../lib/engine/cycleSync";
+import { createInitialState, type AppState } from "../../lib/store/state";
+const T = Number(process.argv[2] ?? 480);
+let s: AppState = createInitialState();
+for (let i = 0; i < T; i++) s = runCycleSync(s);
+const keys = ["revenue", "cogs", "shipping", "rtoCost", "returnCost", "commission", "holding", "unitsDemanded", "unitsFilled", "shipmentsClosed", "rtos", "stockouts"] as const;
+const row = (l: AppState["ledger"]) => Object.fromEntries(keys.map((k) => [k, Math.round(l.totals[k])]));
+const a = row(s.ledger), b = row(s.shadow.ledger);
+for (const k of keys) console.log(k.padEnd(16), String(a[k]).padStart(10), String(b[k]).padStart(10), a.revenue ? ((a[k] / a.revenue) * 100).toFixed(1).padStart(6) + "%" : "", b.revenue ? ((b[k] / b.revenue) * 100).toFixed(1).padStart(6) + "%" : "");
+const priced = s.catalog.filter((p) => p.currentPrice !== p.basePrice).map((p) => `${p.sku} ${p.basePrice}->${p.currentPrice}`);
+console.log("price changes", priced.length, priced.slice(0, 12).join(" | "));
+const mix: Record<string, number> = {};
+for (const sh of s.shipments) mix[sh.courierId] = (mix[sh.courierId] ?? 0) + 1;
+console.log("courier mix", mix, "transfers", s.transfers.length, "POs", s.purchaseOrders.length, "holding onhand", Object.values(s.inventory).reduce((x, r) => x + r["WH-BHW"] + r["WH-GGN"] + r["WH-BLR"], 0), "shadow onhand", Math.round(Object.values(s.shadow.inventory).reduce((x, r) => x + r["WH-BHW"] + r["WH-GGN"] + r["WH-BLR"], 0)));
+const xfer = s.decisions.filter((d) => d.title.includes("transfer stock")).length;
+const ivr = s.orders.filter((o) => o.rtoMeasure).length;
+const vayu = s.shipments.filter((x) => x.courierId === "CR-VAYU").length;
+console.log({ transfersLogged: xfer, ivrInBuffer: ivr, vayuShipments: vayu, avgShipCost: Math.round(s.shipments.reduce((a, x) => a + x.cost, 0) / s.shipments.length) });
