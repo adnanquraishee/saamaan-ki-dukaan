@@ -5,7 +5,9 @@
 import { PINCODE_BY_PIN, WAREHOUSE_BY_ID, WAREHOUSE_IDS, rateZone } from "@/lib/config/network";
 import { PACKAGING_COST, chargeableSlabs, forwardCost, rtoCost } from "@/lib/engine/economics";
 import { hashString } from "@/lib/engine/rng";
-import type { Courier, Order, Product, RateZone, WarehouseId } from "@/lib/types";
+import mapData from "@/data/india-map.json";
+import { HOME_WAREHOUSE } from "@/lib/config/network";
+import type { Courier, Order, OrderLine, Product, RateZone, ShipLeg, WarehouseId } from "@/lib/types";
 import { scoreRto } from "./rto";
 
 export const MAX_SLA_DAYS = 7;
@@ -64,18 +66,66 @@ export function routeOptions(
   return out;
 }
 
-/** Customer-facing promise: fastest serviceable option from any node holding stock. */
-export function deliveryPromise(
-  order: Pick<Order, "lines" | "pincode" | "region" | "tier" | "paymentMode" | "value" | "firstTime">,
+type RoutableOrder = Pick<Order, "lines" | "pincode" | "region" | "tier" | "paymentMode" | "value" | "firstTime">;
+export const MAX_PARCELS = WAREHOUSE_IDS.length;
+
+const MAP_POS = (mapData as unknown as { cities: Record<string, [number, number]>; warehouses: Record<string, [number, number]> });
+
+/** Home FC first, then every other FC by straight-line distance from the customer's city. */
+export function warehousesByProximity(order: Pick<Order, "pincode" | "region">): WarehouseId[] {
+  const home = HOME_WAREHOUSE[order.region];
+  const city = PINCODE_BY_PIN[order.pincode]?.city;
+  const at = (city && MAP_POS.cities[city]) || MAP_POS.warehouses[home];
+  const dist = (wh: WarehouseId) => Math.hypot(MAP_POS.warehouses[wh][0] - at[0], MAP_POS.warehouses[wh][1] - at[1]);
+  return [home, ...WAREHOUSE_IDS.filter((w) => w !== home).sort((a, b) => dist(a) - dist(b))];
+}
+
+/**
+ * Home-first fulfilment. Take whatever the customer's home FC holds (partial quantities included), then fill what
+ * is left from the nearest FC that has stock, and so on. Each resulting parcel gets its own carrier via `choose`.
+ * Returns null only when the network as a whole cannot fill the order (backorder).
+ */
+export function planFulfilment(
+  order: RoutableOrder,
   catalog: Record<string, Product>,
   inv: Record<string, Record<WarehouseId, number>>,
   couriers: Courier[],
-) {
-  const opts = routeOptions(order, catalog, inv, couriers);
-  if (!opts.length) return null;
-  const cheapest = opts.reduce((a, b) => (a.expected <= b.expected ? a : b));
-  const fastest = opts.reduce((a, b) => (a.slaDays <= b.slaDays ? a : b));
-  return { days: Math.ceil(cheapest.slaDays + 0.5), fastestDays: Math.ceil(fastest.slaDays + 0.5), warehouseId: cheapest.warehouseId };
+  choose: (opts: RouteOption[]) => RouteOption | null,
+  opts: { ivr?: boolean } = {},
+): ShipLeg[] | null {
+  const remaining = new Map(order.lines.map((l) => [l.sku, l.qty]));
+  const price = new Map(order.lines.map((l) => [l.sku, l.price]));
+  const legs: ShipLeg[] = [];
+  for (const wh of warehousesByProximity(order)) {
+    if (!Array.from(remaining.values()).some((q) => q > 0)) break;
+    const lines: OrderLine[] = [];
+    for (const [sku, q] of Array.from(remaining.entries())) {
+      const n = Math.min(q, Math.max(0, Math.floor(inv[sku]?.[wh] ?? 0)));
+      if (n > 0) lines.push({ sku, qty: n, price: price.get(sku)! });
+    }
+    if (!lines.length) continue;
+    const legOrder = { ...order, lines, value: lines.reduce((a, l) => a + l.price * l.qty, 0) };
+    const pick = choose(routeOptions(legOrder, catalog, null, couriers, { warehouses: [wh], ivr: opts.ivr }));
+    if (!pick) continue; // no carrier can serve this lane within SLA: try the next-nearest node
+    for (const l of lines) remaining.set(l.sku, remaining.get(l.sku)! - l.qty);
+    legs.push({ warehouseId: wh, courierId: pick.courierId, lines, cost: pick.forward, expectedCost: pick.expected, rtoP: +pick.rtoP.toFixed(3), slaDays: pick.slaDays });
+  }
+  return Array.from(remaining.values()).some((q) => q > 0) || legs.length > MAX_PARCELS ? null : legs;
+}
+
+/** @deprecated kept for callers written before home-first fulfilment; same behaviour as planFulfilment. */
+export const planSplit = planFulfilment;
+
+const cheapestExpected = (opts: RouteOption[]) => (opts.length ? opts.reduce((a, b) => (a.expected <= b.expected ? a : b)) : null);
+
+/** Customer-facing promise, computed with exactly the plan fulfilment will use. */
+export function deliveryPromise(order: RoutableOrder, catalog: Record<string, Product>, inv: Record<string, Record<WarehouseId, number>>, couriers: Courier[]) {
+  const legs = planFulfilment(order, catalog, inv, couriers, cheapestExpected);
+  if (!legs || !legs.length) return null;
+  const days = Math.ceil(Math.max(...legs.map((l) => l.slaDays)) + 0.5);
+  const fastest = Math.ceil(Math.min(...legs.map((l) => l.slaDays)) + 0.5);
+  const home = HOME_WAREHOUSE[order.region];
+  return { days, fastestDays: fastest, warehouseId: legs[0].warehouseId, parcels: legs.length, warehouses: legs.map((l) => l.warehouseId), fromHome: legs[0].warehouseId === home };
 }
 
 export { PINCODE_BY_PIN };

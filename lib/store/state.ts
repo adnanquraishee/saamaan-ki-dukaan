@@ -1,6 +1,6 @@
 import seed from "@/data/seed.json";
 import { AGENT_IDS } from "@/lib/config/envelopes";
-import { COURIERS, SUPPLIERS } from "@/lib/config/network";
+import { COURIERS, SUPPLIERS, WAREHOUSE_IDS } from "@/lib/config/network";
 import type {
   AgentId,
   AgentState,
@@ -33,7 +33,7 @@ import type {
   WarehouseId,
 } from "@/lib/types";
 
-export const STATE_VERSION = 6;
+export const STATE_VERSION = 9;
 export const STORAGE_KEY = `sct:v${STATE_VERSION}`;
 
 export const CAPS = {
@@ -161,7 +161,7 @@ export function createInitialState(): AppState {
     settlements: [],
     inbox: [],
     security: [],
-    settings: { injectionDetection: true, llmEnabled: true, fillRateFloor: 0.9, autoExplain: true },
+    settings: { injectionDetection: true, llmEnabled: true, fillRateFloor: 0.9, autoExplain: true, syntheticDemand: true },
     scenario: { id: null, startedTick: 0, startedWall: 0 },
     ledger: emptyLedger(),
     shadow: { inventory: JSON.parse(JSON.stringify(seed.inventory)), pending: {}, pipeline: [], ledger: emptyLedger(), stockoutKeys: {} },
@@ -170,4 +170,15 @@ export function createInitialState(): AppState {
     counters: { autonomous: 0, proposals: 0, escalations: 0, blocked: 0, conflicts: 0, injectionsCaught: 0, injectionAttempts: 0, humanActions: 0, llmCalls: 0, llmCached: 0, llmRejected: 0, ordersStorefront: 0, seq: 0 },
     storefrontOrderIds: [],
   };
+}
+
+/** Guarantees every stock row has a key for every warehouse, so adding a node never produces NaN stock. */
+export function normaliseState<T extends Partial<AppState>>(s: T): T {
+  const fill = (inv?: Record<string, Record<WarehouseId, number>>) => {
+    if (!inv) return;
+    for (const row of Object.values(inv)) for (const wh of WAREHOUSE_IDS) if (!Number.isFinite(row[wh])) row[wh] = 0;
+  };
+  fill(s.inventory);
+  fill(s.shadow?.inventory);
+  return s;
 }

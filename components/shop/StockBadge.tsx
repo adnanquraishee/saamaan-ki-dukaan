@@ -3,7 +3,7 @@ export function StockBadge({ stock, days }: { stock: number; days: number | null
   return (
     <span className="text-xs text-stone-600">
       {stock < 15 ? <span className="font-medium text-shop-clay">Only {stock} left · </span> : null}
-      {days ? `Delivery in ${days} day${days > 1 ? "s" : ""}` : "Not deliverable to this pincode"}
+      {days && Number.isFinite(days) ? `Delivery in ${days} day${days > 1 ? "s" : ""}` : "Not deliverable to this pincode"}
     </span>
   );
 }

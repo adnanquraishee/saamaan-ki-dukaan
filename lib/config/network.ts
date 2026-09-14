@@ -18,6 +18,8 @@ export const WAREHOUSES: Warehouse[] = [
   { id: "WH-BHW", name: "Bhiwandi FC", city: "Bhiwandi", region: "west", capacity: 60000, holdingCostPerUnitDay: 0.32 },
   { id: "WH-GGN", name: "Gurugram FC", city: "Gurugram", region: "north", capacity: 50000, holdingCostPerUnitDay: 0.38 },
   { id: "WH-BLR", name: "Bengaluru FC", city: "Bengaluru", region: "south", capacity: 45000, holdingCostPerUnitDay: 0.35 },
+  { id: "WH-KOL", name: "Kolkata FC", city: "Kolkata", region: "east", capacity: 22000, holdingCostPerUnitDay: 0.3 },
+  { id: "WH-GAU", name: "Guwahati FC", city: "Guwahati", region: "northeast", capacity: 8000, holdingCostPerUnitDay: 0.34 },
 ];
 export const WAREHOUSE_IDS: WarehouseId[] = WAREHOUSES.map((w) => w.id);
 export const WAREHOUSE_BY_ID = Object.fromEntries(WAREHOUSES.map((w) => [w.id, w])) as Record<WarehouseId, Warehouse>;
@@ -25,8 +27,8 @@ export const WAREHOUSE_BY_ID = Object.fromEntries(WAREHOUSES.map((w) => [w.id, w
 // Which warehouse "naturally" serves each customer region (used for placement demand geography).
 export const HOME_WAREHOUSE: Record<Region, WarehouseId> = {
   north: "WH-GGN",
-  east: "WH-GGN",
-  northeast: "WH-GGN",
+  east: "WH-KOL",
+  northeast: "WH-GAU",
   west: "WH-BHW",
   south: "WH-BLR",
 };

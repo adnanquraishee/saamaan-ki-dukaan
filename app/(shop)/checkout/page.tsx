@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { PINCODES, PINCODE_BY_PIN, REGION_LABEL } from "@/lib/config/network";
+import { PINCODES, PINCODE_BY_PIN, REGION_LABEL, WAREHOUSE_BY_ID } from "@/lib/config/network";
 import { routeOptions } from "@/lib/ml/routing";
 import { scoreRto } from "@/lib/ml/rto";
 import { useCart } from "@/lib/shop/cart";
@@ -124,7 +124,7 @@ export default function Checkout() {
           <span>Total</span>
           <span className="num">{inr(value)}</span>
         </div>
-        <div className="text-sm text-stone-600">{promise ? `Estimated delivery: ${promise.days} day${promise.days > 1 ? "s" : ""}` : "Not deliverable to this pincode"}</div>
+        <div className="text-sm text-stone-600">{promise ? `Estimated delivery: ${promise.days} day${promise.days > 1 ? "s" : ""}${promise.parcels > 1 ? ` · ships in ${promise.parcels} parcels from ${promise.warehouses.map((w) => WAREHOUSE_BY_ID[w].city).join(" + ")}` : !promise.fromHome ? ` · ships from ${WAREHOUSE_BY_ID[promise.warehouseId].city}` : ""}` : "Not deliverable to this pincode"}</div>
         {firstTime && <div className="text-xs text-stone-500">First order with us — welcome.</div>}
         <button onClick={place} disabled={placing || !name.trim() || !promise || outOfStock} className="w-full rounded-md bg-shop-ink py-3 font-medium text-shop-paper transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300">
           {placing ? "Placing…" : outOfStock ? "Some items went out of stock" : `Place order · ${inr(value)}`}

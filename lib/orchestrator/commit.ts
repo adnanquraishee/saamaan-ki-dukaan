@@ -3,13 +3,13 @@
 import type { Draft } from "immer";
 import { catalogIndex, inr } from "@/lib/agents/shared";
 import { AGENT_META, ENVELOPES } from "@/lib/config/envelopes";
-import { REGION_LABEL, SUPPLIER_BY_ID, WAREHOUSE_BY_ID, rateZone } from "@/lib/config/network";
+import { HOME_WAREHOUSE, REGION_LABEL, SUPPLIER_BY_ID, WAREHOUSE_BY_ID, rateZone } from "@/lib/config/network";
 import { simTime } from "@/lib/engine/calendar";
 import { PACKAGING_COST, commissionFor, deliveryDays, trueRtoProbability } from "@/lib/engine/economics";
 import { book, nextId, pushCapped } from "@/lib/engine/world";
 import type { AppState } from "@/lib/store/state";
 import { CAPS } from "@/lib/store/state";
-import type { Action, AgentId, Decision, Escalation, Proposal, ProposerId } from "@/lib/types";
+import type { Action, AgentId, Decision, Escalation, Proposal, ProposerId, ShipLeg, WarehouseId } from "@/lib/types";
 import type { ConflictRecord } from "./arbitrate";
 import { proposalKey } from "./arbitrate";
 import type { GuardOutcome } from "./guardrails";
@@ -102,42 +102,61 @@ export function applyAction(d: Draft<AppState>, action: Action, origin: "agent" 
     case "ASSIGN_COURIERS": {
       let shipped = 0;
       let expected = 0;
+      let splitOrders = 0;
+      let awayFromHome = 0;
       const mix: Record<string, number> = {};
       const byId = new Map(d.orders.map((o) => [o.id, o]));
       for (const as of action.assignments) {
         const o = byId.get(as.orderId);
         if (!o || (o.status !== "placed" && o.status !== "backordered")) continue;
-        if (!o.lines.every((l) => d.inventory[l.sku][as.warehouseId] >= l.qty)) continue; // stock moved since planning
-        const courier = d.couriers.find((c) => c.id === as.courierId)!;
-        const zone = rateZone(WAREHOUSE_BY_ID[as.warehouseId].region, o.region);
-        const days = deliveryDays(courier as never, zone, o.region, t.month, o.u.delay);
+        const legs: ShipLeg[] = as.legs?.length ? as.legs : [{ warehouseId: as.warehouseId, courierId: as.courierId, lines: o.lines, cost: as.cost, expectedCost: as.expectedCost, rtoP: as.rtoP, slaDays: as.slaDays }];
+        // stock may have moved since planning: every parcel must still be fillable, or none ships
+        const need: Record<string, number> = {};
+        for (const leg of legs) for (const l of leg.lines) need[`${l.sku}|${leg.warehouseId}`] = (need[`${l.sku}|${leg.warehouseId}`] ?? 0) + l.qty;
+        if (!Object.entries(need).every(([k, q]) => d.inventory[k.split("|")[0]][k.split("|")[1] as WarehouseId] >= q)) continue;
+        const home = HOME_WAREHOUSE[o.region];
+        const homeHadStock = o.lines.every((l) => d.inventory[l.sku][home] >= l.qty);
         const cartSize = o.lines.reduce((a, l) => a + l.qty, 0);
-        const pTrue = trueRtoProbability({ paymentMode: o.paymentMode, tier: o.tier, value: o.value, category: cat[o.lines[0].sku].category, courierId: courier.id, cartSize, firstTime: o.firstTime, month: t.month, region: o.region, ivr: o.rtoMeasure === "ivr_confirm" });
-        const willRto = o.u.rto < pTrue;
-        const sla = courier.slaDays[zone];
-        for (const l of o.lines) {
-          d.inventory[l.sku][as.warehouseId] -= l.qty;
-          if (!o.booked) book(d.ledger, t.day, "unitsDemanded", l.qty);
-          book(d.ledger, t.day, "unitsFilled", l.qty);
-          book(d.ledger, t.day, "cogs", cat[l.sku].cost * l.qty);
-          book(d.ledger, t.day, "commission", commissionFor(o.channel, cat[l.sku].category, l.price * l.qty));
+        o.legs = [];
+        for (const leg of legs) {
+          const courier = d.couriers.find((c) => c.id === leg.courierId)!;
+          const zone = rateZone(WAREHOUSE_BY_ID[leg.warehouseId].region, o.region);
+          const days = deliveryDays(courier as never, zone, o.region, t.month, o.u.delay);
+          const legValue = leg.lines.reduce((a, l) => a + l.price * l.qty, 0);
+          const pTrue = trueRtoProbability({ paymentMode: o.paymentMode, tier: o.tier, value: o.value, category: cat[leg.lines[0].sku].category, courierId: courier.id, cartSize, firstTime: o.firstTime, month: t.month, region: o.region, ivr: o.rtoMeasure === "ivr_confirm" });
+          const willRto = o.u.rto < pTrue;
+          const sla = courier.slaDays[zone];
+          for (const l of leg.lines) {
+            d.inventory[l.sku][leg.warehouseId] -= l.qty;
+            if (!o.booked) book(d.ledger, t.day, "unitsDemanded", l.qty);
+            book(d.ledger, t.day, "unitsFilled", l.qty);
+            book(d.ledger, t.day, "cogs", cat[l.sku].cost * l.qty);
+            book(d.ledger, t.day, "commission", commissionFor(o.channel, cat[l.sku].category, l.price * l.qty));
+          }
+          book(d.ledger, t.day, "shipping", leg.cost + PACKAGING_COST);
+          d.finance.cash -= leg.cost + PACKAGING_COST;
+          const shipmentId = nextId(d, "SH");
+          d.shipments.push({ id: shipmentId, orderId: o.id, warehouseId: leg.warehouseId, courierId: courier.id, zone, cost: leg.cost, shippedTick: tick, etaTick: tick + Math.ceil(sla) * 24, resolveTick: tick + Math.round((willRto ? sla + 3 : days) * 24), outcome: "in_transit", willRto, slaBreached: days > sla, lines: leg.lines.map((l) => ({ ...l })), value: legValue, channel: o.channel, paymentMode: o.paymentMode, region: o.region, pincode: o.pincode, u: { ret: o.u.ret, delay: o.u.delay } });
+          o.legs.push({ shipmentId, warehouseId: leg.warehouseId, courierId: courier.id, lines: leg.lines.map((l) => ({ ...l })), cost: leg.cost, promisedDays: Math.ceil(leg.slaDays + 0.5) });
+          mix[courier.name] = (mix[courier.name] ?? 0) + 1;
         }
         o.booked = true;
         book(d.ledger, t.day, "revenue", o.value);
-        book(d.ledger, t.day, "shipping", as.cost + PACKAGING_COST);
-        d.finance.cash -= as.cost + PACKAGING_COST;
         if (o.paymentMode === "prepaid" && o.channel === "web") d.finance.cash += o.value;
+        const primary = o.legs.reduce((a, b) => (b.lines.reduce((x, l) => x + l.price * l.qty, 0) > a.lines.reduce((x, l) => x + l.price * l.qty, 0) ? b : a));
         o.status = "shipped";
-        o.warehouseId = as.warehouseId;
-        o.courierId = as.courierId;
-        o.shipCost = as.cost;
-        o.promisedDays = Math.ceil(as.slaDays + 0.5);
-        d.shipments.push({ id: nextId(d, "SH"), orderId: o.id, warehouseId: as.warehouseId, courierId: courier.id, zone, cost: as.cost, shippedTick: tick, etaTick: tick + Math.ceil(sla) * 24, resolveTick: tick + Math.round((willRto ? sla + 3 : days) * 24), outcome: "in_transit", willRto, slaBreached: days > sla, lines: o.lines.map((l) => ({ ...l })), value: o.value, channel: o.channel, paymentMode: o.paymentMode, region: o.region, u: { ret: o.u.ret, delay: o.u.delay } });
+        o.warehouseId = primary.warehouseId;
+        o.courierId = primary.courierId;
+        o.shipCost = o.legs.reduce((a, l) => a + l.cost, 0);
+        o.promisedDays = Math.max(...o.legs.map((l) => l.promisedDays));
+        o.sourcing = { home, homeHadStock, split: o.legs.length > 1 };
+        if (o.legs.length > 1) splitOrders++;
+        if (!o.legs.some((l) => l.warehouseId === home)) awayFromHome++;
         shipped++;
         expected += as.expectedCost;
-        mix[courier.name] = (mix[courier.name] ?? 0) + 1;
       }
-      return { summary: shipped ? `${shipped} orders shipped · avg expected landed ${inr(expected / shipped)} · ${Object.entries(mix).map(([k, v]) => `${k} ${v}`).join(", ")}` : "", count: shipped };
+      const extras = [splitOrders ? `${splitOrders} split across warehouses` : "", awayFromHome ? `${awayFromHome} sourced away from home FC` : ""].filter(Boolean).join(" · ");
+      return { summary: shipped ? `${shipped} orders shipped · avg expected landed ${inr(expected / shipped)} · ${Object.entries(mix).map(([k, v]) => `${k} ${v}`).join(", ")}${extras ? ` · ${extras}` : ""}` : "", count: shipped };
     }
     case "RESOLVE_RETURN": {
       const r = d.returns.find((x) => x.id === action.returnId);

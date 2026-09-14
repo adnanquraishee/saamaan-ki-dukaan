@@ -6,7 +6,7 @@ export type Tier = "metro" | "tier2" | "tier3";
 export type RateZone = "A" | "B" | "C" | "D";
 export type PaymentMode = "cod" | "prepaid";
 export type Channel = "web" | "marketplace";
-export type WarehouseId = "WH-BHW" | "WH-GGN" | "WH-BLR";
+export type WarehouseId = "WH-BHW" | "WH-GGN" | "WH-BLR" | "WH-KOL" | "WH-GAU";
 export type AgentId =
   | "demand"
   | "pricing"
@@ -141,6 +141,19 @@ export interface Order {
   shipCost?: number;
   u: { rto: number; ret: number; delay: number }; // common random numbers (shadow comparison)
   booked?: boolean;
+  // one entry per parcel; more than one when no single warehouse could fill the whole order
+  legs?: OrderLeg[];
+  // where the order "should" have shipped from, and whether that node had the stock
+  sourcing?: { home: WarehouseId; homeHadStock: boolean; split: boolean };
+}
+
+export interface OrderLeg {
+  shipmentId: string;
+  warehouseId: WarehouseId;
+  courierId: string;
+  lines: OrderLine[];
+  cost: number;
+  promisedDays: number;
 }
 
 export interface Shipment {
@@ -162,6 +175,7 @@ export interface Shipment {
   channel: Channel;
   paymentMode: PaymentMode;
   region: Region;
+  pincode: string;
   u: { ret: number; delay: number };
 }
 
@@ -250,6 +264,18 @@ export interface Allocation {
   courierId?: string; // cheapest-rate carrier implied by the fulfilment choice
   shipCost: number;
   slaDays: number;
+  legs?: ShipLeg[]; // split fulfilment across warehouses
+}
+
+/** One parcel of a (possibly split) order: which node ships which lines, via which carrier. */
+export interface ShipLeg {
+  warehouseId: WarehouseId;
+  courierId: string;
+  lines: OrderLine[];
+  cost: number;
+  expectedCost: number;
+  rtoP: number;
+  slaDays: number;
 }
 
 export interface CourierAssignment {
@@ -260,6 +286,7 @@ export interface CourierAssignment {
   expectedCost: number;
   rtoP: number;
   slaDays: number;
+  legs?: ShipLeg[]; // present when the order ships in several parcels from different warehouses
 }
 
 export interface ForecastEntry {
@@ -491,6 +518,7 @@ export interface Settings {
   llmEnabled: boolean;
   fillRateFloor: number;
   autoExplain: boolean;
+  syntheticDemand: boolean;
 }
 
 export interface EngineLock {

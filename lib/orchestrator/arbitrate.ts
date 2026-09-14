@@ -6,7 +6,7 @@ import { fulfilmentScore } from "@/lib/agents/fulfilment";
 import { sizingEconomics } from "@/lib/agents/returns";
 import { businessScore, catalogIndex, coverDays, inr, propose } from "@/lib/agents/shared";
 import { CASH_BUFFER } from "@/lib/config/envelopes";
-import { COURIER_BY_ID, HOME_WAREHOUSE, REGION_LABEL, WAREHOUSE_BY_ID } from "@/lib/config/network";
+import { COURIER_BY_ID, HOME_WAREHOUSE, REGION_LABEL, WAREHOUSE_BY_ID, WAREHOUSE_IDS } from "@/lib/config/network";
 import { routeOptions } from "@/lib/ml/routing";
 import type { AppState } from "@/lib/store/state";
 import type { Action, CourierAssignment, Proposal, Region } from "@/lib/types";
@@ -94,7 +94,7 @@ export function arbitrate(s: AppState, proposals: Proposal[]) {
     if (!clash.length) return [p];
     const keep = a.zones.filter((z) => !held.has(z));
     const prod = cat[a.sku];
-    const covers = Object.fromEntries((["WH-BHW", "WH-GGN", "WH-BLR"] as const).map((w) => [w, coverDays(s, prod, w)]));
+    const covers = Object.fromEntries(WAREHOUSE_IDS.map((w) => [w, coverDays(s, prod, w)]));
     conflicts.push({
       kind: "pricing_vs_inventory",
       title: `Pricing vs Inventory · ${prod.name}`,
@@ -131,7 +131,7 @@ export function arbitrate(s: AppState, proposals: Proposal[]) {
         backorders.push(al.orderId);
         continue;
       }
-      if (!al.warehouseId || (al.warehouseId === c.warehouseId && al.courierId === c.courierId)) {
+      if (!al.warehouseId || c.legs || al.legs || (al.warehouseId === c.warehouseId && al.courierId === c.courierId)) {
         merged.push(c);
         continue;
       }

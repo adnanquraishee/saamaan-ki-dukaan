@@ -1,6 +1,6 @@
 import { ENVELOPES } from "@/lib/config/envelopes";
 import { HOME_WAREHOUSE, WAREHOUSE_IDS } from "@/lib/config/network";
-import { MAX_SLA_DAYS, canFill, routeOptions } from "@/lib/ml/routing";
+import { MAX_SLA_DAYS, planFulfilment } from "@/lib/ml/routing";
 import type { AppState } from "@/lib/store/state";
 import type { Allocation, Order, Proposal, WarehouseId } from "@/lib/types";
 import { catalogIndex, coverDays, propose } from "./shared";
@@ -31,33 +31,28 @@ export const fulfilmentAgent: Agent<{ s: AppState; orders: Order[] }> = {
     const allocations: Allocation[] = [];
     const meta: Record<string, { score: number; scarcePenalty: boolean }> = {};
     let backorders = 0;
+    let splits = 0;
     for (const o of orders) {
-      let best: { wh: WarehouseId; score: number; fwd: number; sla: number; courierId: string } | null = null;
-      for (const wh of WAREHOUSE_IDS) {
-        if (!canFill(o, inv, wh)) continue;
-        const opts = routeOptions(o, cat, null, s.couriers, { warehouses: [wh] });
-        if (!opts.length) continue;
-        const cheapest = opts.reduce((a, b) => (a.forward <= b.forward ? a : b));
-        const score = fulfilmentScore(s, o, wh, cheapest.forward);
-        if (!best || score < best.score) best = { wh, score, fwd: cheapest.forward, sla: cheapest.slaDays, courierId: cheapest.courierId };
-      }
-      if (!best || best.sla > MAX_SLA_DAYS) {
+      const legs = planFulfilment(o, cat, inv, s.couriers, (opts) => (opts.length ? opts.reduce((a, b) => (a.forward <= b.forward ? a : b)) : null));
+      if (!legs || !legs.length || Math.max(...legs.map((l) => l.slaDays)) > MAX_SLA_DAYS) {
         allocations.push({ orderId: o.id, warehouseId: null, shipCost: 0, slaDays: 0 });
         backorders++;
         continue;
       }
-      for (const l of o.lines) inv[l.sku][best.wh] -= l.qty;
-      allocations.push({ orderId: o.id, warehouseId: best.wh, courierId: best.courierId, shipCost: best.fwd, slaDays: best.sla });
-      meta[o.id] = { score: best.score, scarcePenalty: best.score > best.fwd };
+      for (const leg of legs) for (const l of leg.lines) inv[l.sku][leg.warehouseId] -= l.qty;
+      if (legs.length > 1) splits++;
+      const shipCost = legs.reduce((a, l) => a + l.cost, 0);
+      allocations.push({ orderId: o.id, warehouseId: legs[0].warehouseId, courierId: legs[0].courierId, shipCost, slaDays: Math.max(...legs.map((l) => l.slaDays)), legs: legs.length > 1 ? legs : undefined });
+      meta[o.id] = { score: fulfilmentScore(s, o, legs[0].warehouseId, shipCost), scarcePenalty: false };
     }
     return [
       propose("fulfilment", { type: "ALLOCATE_ORDERS", allocations }, {
-        reasoning: `Allocated ${allocations.length - backorders} orders to the cheapest ship-from node and carrier by rate card, penalising draws on scarce non-home nodes (+₹${PROTECTION_PENALTY}); ${backorders} cannot be filled from any node.`,
+        reasoning: `Allocated ${allocations.length - backorders} orders home-first: each ships what its home FC holds and the remainder comes from the nearest FC with stock (cheapest-rate carrier per parcel); ${splits} split across warehouses; ${backorders} cannot be filled from any combination of nodes.`,
         confidence: 0.82,
         costImpact: allocations.reduce((a, x) => a + x.shipCost, 0),
         serviceImpact: allocations.length - backorders,
         resources: allocations.map((a) => ({ kind: "order" as const, key: a.orderId })),
-        meta: { scores: meta, backorders },
+        meta: { scores: meta, backorders, splits },
       }),
     ];
   },

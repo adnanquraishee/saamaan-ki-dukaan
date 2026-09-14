@@ -308,12 +308,25 @@ for (const p of catalog) {
   const avg = Math.max(0.5, recent.reduce((a, b) => a + b, 0) / recent.length);
   const coverDays = AGEING.has(p.sku) ? u(110, 150) : u(26, 40);
   const total = Math.round(avg * coverDays);
-  const whShare: Record<WarehouseId, number> = { "WH-BHW": 0, "WH-GGN": 0, "WH-BLR": 0 };
+  const whShare = Object.fromEntries(WAREHOUSE_IDS.map((w) => [w, 0])) as Record<WarehouseId, number>;
   for (const r of REGIONS) whShare[HOME_WAREHOUSE[r]] += p.regionShare[r];
   inventory[p.sku] = Object.fromEntries(WAREHOUSE_IDS.map((w) => [w, Math.round(total * whShare[w])])) as Record<WarehouseId, number>;
 }
+// Regional FCs (Kolkata, Guwahati) stock the full range, thinly: every SKU gets at least a few units there,
+// topped up from the largest node, so local orders ship locally and only the shortfall is fetched elsewhere.
+const REGIONAL_MIN: Partial<Record<WarehouseId, number>> = { "WH-KOL": 6, "WH-GAU": 3 };
+for (const p of catalog) {
+  for (const [wh, min] of Object.entries(REGIONAL_MIN) as [WarehouseId, number][]) {
+    const gap = Math.max(0, min - inventory[p.sku][wh]);
+    if (!gap) continue;
+    const donor = WAREHOUSE_IDS.filter((w) => !(w in REGIONAL_MIN)).sort((a, b) => inventory[p.sku][b] - inventory[p.sku][a])[0];
+    const moved = Math.min(gap, Math.max(0, inventory[p.sku][donor] - 1));
+    inventory[p.sku][donor] -= moved;
+    inventory[p.sku][wh] += moved;
+  }
+}
 // hero SKU for the viral scenario starts comfortably stocked but not deep
-inventory["ELE-001"] = { "WH-BHW": 70, "WH-GGN": 80, "WH-BLR": 60 };
+inventory["ELE-001"] = { "WH-BHW": 70, "WH-GGN": 62, "WH-BLR": 60, "WH-KOL": 18, "WH-GAU": 4 };
 
 // price 30-day mean
 for (const p of catalog) {

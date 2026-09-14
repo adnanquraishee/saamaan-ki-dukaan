@@ -11,7 +11,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5";
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// gemini-2.5-flash is no longer available to new API keys; 3.6 Flash with minimal thinking keeps JSON replies complete
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 const cache = new Map<string, unknown>();
 const hits: number[] = [];
 const RATE_PER_MIN = Number(process.env.LLM_RATE_PER_MIN || 20);
@@ -85,11 +86,11 @@ async function geminiPost(task: TaskName, input: Record<string, unknown>) {
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY!)}`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }], generationConfig: { temperature: 0.1, responseMimeType: "application/json" } }),
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }], generationConfig: { temperature: 0.1, responseMimeType: "application/json", maxOutputTokens: 2048, thinkingConfig: { thinkingLevel: "minimal" } } }),
     });
     if (!response.ok) return NextResponse.json({ ok: false, error: "Gemini request failed" }, { status: response.status === 429 ? 429 : 502 });
     const json = await response.json();
-    const text = json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
+    const text = json?.candidates?.[0]?.content?.parts?.filter((p: { thought?: boolean }) => !p.thought).map((p: { text?: string }) => p.text ?? "").join("") ?? "";
     const parsed = TASKS[task].safeParse(JSON.parse(text));
     if (!parsed.success) return NextResponse.json({ ok: false, error: "Gemini response failed schema validation" }, { status: 502 });
     cache.set(key, parsed.data);

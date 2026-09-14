@@ -56,8 +56,12 @@ function OrdersInner() {
               </ul>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-shop-sand pt-3 text-xs text-stone-600">
                 <span>
-                  {o.warehouseId ? `From ${WAREHOUSE_BY_ID[o.warehouseId].city}` : "Choosing a warehouse"}
-                  {o.courierId ? ` via ${COURIER_BY_ID[o.courierId].name}` : ""}
+                  {o.legs && o.legs.length > 1
+                    ? `Ships in ${o.legs.length} parcels: ${o.legs.map((l) => `${WAREHOUSE_BY_ID[l.warehouseId].city} via ${COURIER_BY_ID[l.courierId].name}`).join(" + ")}`
+                    : o.warehouseId
+                      ? `From ${WAREHOUSE_BY_ID[o.warehouseId].city}${o.courierId ? ` via ${COURIER_BY_ID[o.courierId].name}` : ""}`
+                      : "Choosing a warehouse"}
+                  {o.sourcing && !o.sourcing.homeHadStock ? ` · not in stock at ${WAREHOUSE_BY_ID[o.sourcing.home].city}, fetched from another warehouse` : ""}
                   {o.promisedDays ? ` · arrives in ~${o.promisedDays} days` : ""}
                   {o.rtoMeasure === "ivr_confirm" ? " · you'll get a confirmation call" : ""}
                 </span>

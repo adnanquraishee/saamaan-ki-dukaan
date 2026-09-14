@@ -40,7 +40,7 @@ export function triggerScenario(d: Draft<AppState>, id: ScenarioId) {
       break;
     case "conflict": {
       const sku = "HOM-004";
-      d.inventory[sku] = { "WH-BHW": 220, "WH-GGN": 8, "WH-BLR": 90 };
+      d.inventory[sku] = { "WH-BHW": 220, "WH-GGN": 8, "WH-BLR": 90, "WH-KOL": 40, "WH-GAU": 6 };
       d.lastPriceChange[sku] = -999;
       delete d.cooldowns[`price:${sku}`];
       for (const k of Object.keys(d.holds)) if (k.startsWith(`${sku}|`)) delete d.holds[k];

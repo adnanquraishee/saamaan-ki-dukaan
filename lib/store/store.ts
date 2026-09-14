@@ -3,7 +3,7 @@
 // persists (single writer). Ring buffers in state.ts keep the payload far below the 5 MB quota.
 import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
-import { CAPS, STATE_VERSION, STORAGE_KEY, createInitialState, type AppState } from "./state";
+import { CAPS, STATE_VERSION, STORAGE_KEY, createInitialState, normaliseState, type AppState } from "./state";
 
 let persistEnabled = false;
 export function setPersistEnabled(on: boolean) {
@@ -64,7 +64,7 @@ export const useApp = create<AppState>()(
     skipHydration: true,
     // incompatible versions re-seed rather than attempting a migration
     migrate: () => createInitialState(),
-    merge: (persisted, current) => ({ ...current, ...(persisted as Partial<AppState>) }),
+    merge: (persisted, current) => normaliseState({ ...current, ...(persisted as Partial<AppState>) }),
   }),
 );
 

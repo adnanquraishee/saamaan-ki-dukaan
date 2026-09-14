@@ -25,7 +25,7 @@ import { CAPS, newLedgerDay } from "@/lib/store/state";
 import type { LedgerDay, Order, PaymentMode, PolicyLedger, Product, Region, Tier, WarehouseId } from "@/lib/types";
 import { festivalForDate, simTime } from "./calendar";
 import { PACKAGING_COST, RESTOCK_FRACTION, chargeableSlabs, commissionFor, forwardCost, rtoCost, trueReturnProbability, trueRtoProbability } from "./economics";
-import { gamma, hashString, mulberry32, pick, poisson, type Rng } from "./rng";
+import { gamma, hashString, mulberry32, pick, poisson, weightedPick, type Rng } from "./rng";
 import { competitorPage, poisonedInvoice, returnNote, settlementNotice, supplierDelayEmail } from "./text";
 
 const TIER_COD: Record<Tier, number> = { metro: 0.42, tier2: 0.58, tier3: 0.7 };
@@ -94,7 +94,19 @@ export function buildOrder(
 }
 
 export function insertOrder(d: Draft<AppState>, order: Order) {
-  pushCapped(d.orders, order, CAPS.orders);
+  d.orders.push(order);
+  if (d.orders.length > CAPS.orders) {
+    // evict the oldest synthetic orders first: a customer's own storefront orders must stay traceable
+    let excess = d.orders.length - CAPS.orders;
+    const keep = new Set(d.storefrontOrderIds.slice(-150));
+    d.orders = d.orders.filter((o) => {
+      if (excess > 0 && o.source === "synthetic" && !keep.has(o.id)) {
+        excess--;
+        return false;
+      }
+      return true;
+    });
+  }
   // keep storefront orders from being evicted by synthetic volume
   if (order.source === "storefront") {
     d.storefrontOrderIds.push(order.id);
@@ -234,7 +246,7 @@ export function advanceWorld(d: Draft<AppState>) {
     if (v.length > 24) v.splice(0, v.length - 24);
   }
 
-  generateDemand(d, rng, t);
+  if (d.settings.syntheticDemand) generateDemand(d, rng, t);
   resolveShipments(d, tick, t.day);
   surfaceReturns(d, tick, rng);
   finaliseReturns(d, tick, t.day);
@@ -266,15 +278,19 @@ function viralMultiplier(d: Draft<AppState>, sku: string, tick: number, region: 
   return 1 + (peak - 1) * Math.exp(-(ageDays - 3) / 3);
 }
 
+// ~18% of orders are baskets with a companion item. The primary rate is scaled down so total units stay unchanged.
+const BASKET_RATE = 0.18;
+
 function generateDemand(d: Draft<AppState>, rng: Rng, t: ReturnType<typeof simTime>) {
   const fest = festivalForDate(t.dateIso);
+  const weights = d.catalog.map((p) => p.baseDaily);
   for (const p of d.catalog) {
     const dayNoise = gamma(mulberry32(hashString(`${p.sku}:${t.day}`)), 6) / 6;
     const lift = fest ? (fest.lift[p.category] ?? fest.lift.all ?? 1) : 1;
     for (const r of REGIONS) {
       const viral = viralMultiplier(d, p.sku, t.tick, r);
       const price = p.zonePrice[r];
-      const lambda = p.baseDaily * DOW_FACTOR[t.dow] * t.hourShare * lift * Math.pow(price / p.basePrice, p.elasticity) * p.regionShare[r] * viral * dayNoise;
+      const lambda = p.baseDaily * DOW_FACTOR[t.dow] * t.hourShare * lift * Math.pow(price / p.basePrice, p.elasticity) * p.regionShare[r] * viral * dayNoise / (1 + BASKET_RATE);
       const n = poisson(rng, lambda);
       for (let i = 0; i < n; i++) {
         const pin = pick(rng, PINS_BY_REGION[r]);
@@ -285,7 +301,14 @@ function generateDemand(d: Draft<AppState>, rng: Rng, t: ReturnType<typeof simTi
           paymentMode: rng() < TIER_COD[pin.tier] ? "cod" : "prepaid",
           firstTime: rng() < 0.3,
           channel: rng() < 0.4 ? "marketplace" : "web",
-          lines: [{ sku: p.sku, qty: rng() < 0.1 ? 2 : 1 }],
+          lines: (() => {
+            const lines = [{ sku: p.sku, qty: rng() < 0.1 ? 2 : 1 }];
+            if (rng() < BASKET_RATE) {
+              const companion = weightedPick(rng, d.catalog, weights);
+              if (companion.sku !== p.sku) lines.push({ sku: companion.sku, qty: 1 });
+            }
+            return lines;
+          })(),
           rng,
         });
         if (order) insertOrder(d, order);
@@ -317,7 +340,8 @@ function resolveShipments(d: Draft<AppState>, tick: number, day: number) {
       if (s.paymentMode === "prepaid" && s.channel === "web") d.finance.cash -= s.value; // refund prepaid
     } else {
       s.outcome = "delivered";
-      if (o) o.status = "delivered";
+      // a split order is delivered only when its last parcel arrives
+      if (o && (!o.legs || o.legs.every((leg) => leg.shipmentId === s.id || d.shipments.find((x) => x.id === leg.shipmentId)?.outcome !== "in_transit"))) o.status = "delivered";
       if (s.paymentMode === "cod" && s.channel === "web") d.finance.cash += s.value;
       if (s.channel === "marketplace") d.finance.receivable += s.value;
       // schedule a return using the order's common random number
@@ -523,4 +547,3 @@ export function injectPoisonedInvoice(d: Draft<AppState>) {
   const amount = po ? Math.round(po.value * 1.35) : 1450000;
   pushCapped(d.inbox, { id: nextId(d, "MSG"), tick: d.clock.tick, kind: "invoice", from: supplier.name, subject: `URGENT — Invoice for ${poId}`, body: poisonedInvoice({ supplier: supplier.name, poId, amount }), refId: poId, processed: false }, CAPS.inbox);
 }
-

@@ -29,14 +29,14 @@ export const placementAgent: Agent<{ s: AppState; skus: Product[] }> = {
       if (s.transfers.some((t) => t.sku === p.sku)) continue;
       const hotSku = (s.forecasts[p.sku]?.velocityMult ?? 1) >= 2.5;
       // For hot SKUs use observed order geography (last 12h) — a spike rarely keeps the historical regional mix.
-      const observed: Record<WarehouseId, number> = { "WH-BHW": 1, "WH-GGN": 1, "WH-BLR": 1 };
+      const observed = Object.fromEntries(WAREHOUSE_IDS.map((w) => [w, 1])) as Record<WarehouseId, number>;
       if (hotSku) {
         for (const o of s.orders) {
           if (s.clock.tick - o.tick > 12) continue;
           for (const l of o.lines) if (l.sku === p.sku) observed[HOME_WAREHOUSE[o.region]] += l.qty;
         }
       }
-      const obsTotal = observed["WH-BHW"] + observed["WH-GGN"] + observed["WH-BLR"];
+      const obsTotal = WAREHOUSE_IDS.reduce((a, w) => a + observed[w], 0);
       const cov = Object.fromEntries(
         WAREHOUSE_IDS.map((w) => {
           const daily = hotSku ? dailyDemand(s, p.sku) * (observed[w] / obsTotal) : warehouseDaily(s, p, w);

@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { probeLlm } from "@/lib/llm/client";
 import { probeRelay, startRelayPublisher, startRemotePoll } from "@/lib/remote/relayClient";
 import { startEngineLoop, stopEngineLoop } from "@/lib/engine/runner";
-import { STORAGE_KEY } from "@/lib/store/state";
+import { STATE_VERSION, STORAGE_KEY } from "@/lib/store/state";
 import { useApp } from "@/lib/store/store";
 import { setClaimAllowed, startSync } from "@/lib/store/sync";
 import { useUi } from "@/lib/store/ui";
@@ -31,6 +31,10 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
       stops.push(stopEngineLoop);
       if (relay.enabled) stops.push(startRelayPublisher());
       probeLlm().then((llm) => useUi.setState({ llm }));
+      const versionGuard = setInterval(() => {
+        if (useApp.getState().version !== STATE_VERSION) window.location.reload();
+      }, 3000);
+      stops.push(() => clearInterval(versionGuard));
     })();
     return () => {
       cancelled = true;

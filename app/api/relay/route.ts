@@ -24,7 +24,7 @@ function enabled(req: Request) {
   return host === "localhost" || host === "127.0.0.1" || host.endsWith(".local") || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
 }
 
-const ALLOWED = new Set(["placeOrder", "requestReturn"]);
+const ALLOWED = new Set(["placeOrder", "requestReturn", "supportTicket"]);
 
 export async function GET(req: Request) {
   if (!enabled(req)) return NextResponse.json({ enabled: false });
@@ -42,11 +42,12 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   if (!enabled(req)) return NextResponse.json({ enabled: false }, { status: 404 });
-  const body = (await req.json().catch(() => null)) as { kind?: string; client?: string; snapshot?: unknown; cmd?: { type?: string }; id?: string } | null;
+  const body = (await req.json().catch(() => null)) as { kind?: string; client?: string; takeover?: boolean; snapshot?: unknown; cmd?: { type?: string }; id?: string } | null;
   if (!body) return NextResponse.json({ ok: false }, { status: 400 });
   if (body.kind === "snapshot" && body.client) {
     const alive = Date.now() - relay.snapshotAt < 6000;
-    if (alive && relay.engineClient && relay.engineClient !== body.client) return NextResponse.json({ ok: false, error: "another engine is live" }, { status: 409 });
+    // the presenter's localhost browser may take the engine over from a LAN device
+    if (alive && relay.engineClient && relay.engineClient !== body.client && !body.takeover) return NextResponse.json({ ok: false, error: "another engine is live" }, { status: 409 });
     relay.engineClient = body.client;
     relay.snapshot = body.snapshot;
     relay.snapshotAt = Date.now();

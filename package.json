@@ -16,7 +16,8 @@
     "embed": "tsx scripts/embed-corpus.ts",
     "data": "npm run seed && npm run train && npm run corpus && npm run embed && npm run warm",
     "demo": "next build && next start -H 0.0.0.0",
-    "warm": "tsx scripts/generate-warm-state.ts"
+    "warm": "tsx scripts/generate-warm-state.ts",
+    "map": "python3 scripts/build-india-map.py"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

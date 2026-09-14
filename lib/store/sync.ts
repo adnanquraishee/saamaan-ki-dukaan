@@ -30,6 +30,10 @@ let tabId = "";
 const pendingCmds = new Map<string, { cmd: Command; sent: number }>();
 const listeners = new Set<(id: string) => void>();
 
+function post(msg: Msg) {
+  channel?.postMessage({ ...msg, v: STATE_VERSION });
+}
+
 export function getTabId() {
   return tabId;
 }
@@ -65,7 +69,7 @@ export function dispatch(cmd: Command): Promise<void> {
       resolve();
     };
     listeners.add(done);
-    channel?.postMessage({ t: "cmd", from: tabId, id, cmd } satisfies Msg);
+    post({ t: "cmd", from: tabId, id, cmd } satisfies Msg);
   });
 }
 
@@ -73,7 +77,7 @@ export function dispatch(cmd: Command): Promise<void> {
 export function resetDemo() {
   resetting = true;
   setPersistEnabled(false);
-  channel?.postMessage({ t: "reload", from: tabId } satisfies Msg);
+  post({ t: "reload", from: tabId } satisfies Msg);
   hardReset();
   setTimeout(() => window.location.reload(), 150);
 }
@@ -101,19 +105,21 @@ export function startSync() {
     }
     // viewers only ever originate lock changes
     if (!holder && !("engine" in keys)) return;
-    if (n) channel?.postMessage({ t: "diff", from: tabId, keys: holder ? keys : { engine: state.engine } } satisfies Msg);
+    if (n) post({ t: "diff", from: tabId, keys: holder ? keys : { engine: state.engine } } satisfies Msg);
   });
 
-  channel.onmessage = (ev: MessageEvent<Msg>) => {
+  channel.onmessage = (ev: MessageEvent<Msg & { v?: number }>) => {
     const m = ev.data;
     if (!m || m.from === tabId) return;
+    // tabs running a different state version (stale bundle after a code change) must not exchange state
+    if (m.v !== STATE_VERSION) return;
     const s = useApp.getState();
     switch (m.t) {
       case "diff": {
         const keys = { ...m.keys };
         if (keys.engine && !incomingLockWins(s.engine, keys.engine)) {
           delete keys.engine;
-          channel?.postMessage({ t: "diff", from: tabId, keys: { engine: s.engine } } satisfies Msg);
+          post({ t: "diff", from: tabId, keys: { engine: s.engine } } satisfies Msg);
         }
         // a tab that has just lost the lock must not overwrite state from its stale copy
         if (isHolder(s) && !keys.engine) {
@@ -129,7 +135,7 @@ export function startSync() {
         break;
       }
       case "hello":
-        if (isHolder(s)) channel?.postMessage({ t: "snapshot", from: tabId, to: m.from, state: s } satisfies Msg);
+        if (isHolder(s)) post({ t: "snapshot", from: tabId, to: m.from, state: s } satisfies Msg);
         break;
       case "snapshot":
         if (m.to === tabId && !isHolder(s)) {
@@ -141,7 +147,7 @@ export function startSync() {
       case "cmd":
         if (isHolder(s)) {
           executeCommand(m.cmd);
-          channel?.postMessage({ t: "ack", from: tabId, id: m.id } satisfies Msg);
+          post({ t: "ack", from: tabId, id: m.id } satisfies Msg);
         }
         break;
       case "reload":
@@ -156,7 +162,7 @@ export function startSync() {
     }
   };
 
-  channel.postMessage({ t: "hello", from: tabId } satisfies Msg);
+  post({ t: "hello", from: tabId } satisfies Msg);
 
   // heartbeat + claim + resend
   const beat = setInterval(() => {
@@ -178,7 +184,7 @@ export function startSync() {
         listeners.forEach((l) => l(id));
       } else if (now - p.sent > 1500) {
         p.sent = now;
-        channel?.postMessage({ t: "cmd", from: tabId, id, cmd: p.cmd } satisfies Msg);
+        post({ t: "cmd", from: tabId, id, cmd: p.cmd } satisfies Msg);
       }
     }
   }, 1000);

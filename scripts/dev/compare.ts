@@ -11,7 +11,7 @@ const priced = s.catalog.filter((p) => p.currentPrice !== p.basePrice).map((p) =
 console.log("price changes", priced.length, priced.slice(0, 12).join(" | "));
 const mix: Record<string, number> = {};
 for (const sh of s.shipments) mix[sh.courierId] = (mix[sh.courierId] ?? 0) + 1;
-console.log("courier mix", mix, "transfers", s.transfers.length, "POs", s.purchaseOrders.length, "holding onhand", Object.values(s.inventory).reduce((x, r) => x + r["WH-BHW"] + r["WH-GGN"] + r["WH-BLR"], 0), "shadow onhand", Math.round(Object.values(s.shadow.inventory).reduce((x, r) => x + r["WH-BHW"] + r["WH-GGN"] + r["WH-BLR"], 0)));
+console.log("courier mix", mix, "transfers", s.transfers.length, "POs", s.purchaseOrders.length, "holding onhand", Object.values(s.inventory).reduce((x, r) => x + Object.values(r).reduce((a, b) => a + b, 0), 0), "shadow onhand", Math.round(Object.values(s.shadow.inventory).reduce((x, r) => x + Object.values(r).reduce((a, b) => a + b, 0), 0)));
 const xfer = s.decisions.filter((d) => d.title.includes("transfer stock")).length;
 const ivr = s.orders.filter((o) => o.rtoMeasure).length;
 const vayu = s.shipments.filter((x) => x.courierId === "CR-VAYU").length;

@@ -72,7 +72,7 @@ export function runGuardrails(s: AppState, p: Proposal): GuardOutcome {
       add("envelope", "Action envelope", a.qty <= (env.maxTransferUnits ?? 0) && a.cost <= (env.maxTransferCost ?? 0), `${a.qty} units (max ${env.maxTransferUnits}), ${inr(a.cost)} (max ${inr(env.maxTransferCost ?? 0)}).`);
       break;
     case "ASSIGN_COURIERS": {
-      const bad = a.assignments.filter((x) => !env.courierWhitelist?.includes(x.courierId));
+      const bad = a.assignments.flatMap((x): string[] => (x.legs?.length ? x.legs.map((l) => l.courierId) : [x.courierId])).filter((id) => !env.courierWhitelist?.includes(id));
       add("envelope", "Action envelope", bad.length === 0, bad.length ? `${bad.length} assignments to non-whitelisted carriers.` : `${a.assignments.length} assignments, all whitelisted carriers within ${env.courierPremiumCeilingPct}% premium ceiling.`);
       util = 0.3;
       break;
@@ -108,7 +108,7 @@ export function runGuardrails(s: AppState, p: Proposal): GuardOutcome {
   // 6. Numeric validation — figures must match state / the grounded document.
   if (a.type === "ASSIGN_COURIERS" && p.citations?.length) {
     const mismatches: string[] = [];
-    for (const c of new Set(a.assignments.map((x) => x.courierId))) {
+    for (const c of new Set(a.assignments.flatMap((x) => (x.legs?.length ? x.legs.map((l) => l.courierId) : [x.courierId])))) {
       const courier = COURIER_BY_ID[c];
       const doc = p.citations.find((x) => x.source === courier.contractDoc);
       if (!doc) continue;
@@ -119,10 +119,12 @@ export function runGuardrails(s: AppState, p: Proposal): GuardOutcome {
     add("numeric", "Numeric validation", mismatches.length === 0, mismatches.length ? `Rate used for ${mismatches.join(", ")} does not match the retrieved rate card.` : "Rates used in cost estimates match the retrieved rate cards.");
   }
   if (a.type === "RAISE_DISPUTE") {
-    const ex = p.meta?.extracted as { gross?: number | null; otherDeductions?: { amount: number }[] } | undefined;
+    const ex = p.meta?.extracted as { gross?: number | null; netPayable?: number | null; otherDeductions?: { amount: number }[] } | undefined;
     const st = s.settlements.find((x) => x.id === a.settlementId);
     const grossOk = !!st && ex?.gross === st.gross;
     const amountOk = !!st && a.amount === (st.claimedDeduction ?? 0);
+    const expectedNet = st ? st.gross - st.expectedCommission - a.amount : 0;
+    const netOk = !!st && ex?.netPayable !== null && ex?.netPayable !== undefined && Math.abs(ex.netPayable - expectedNet) < 1;
     let llmOk = true;
     let llmBad: number[] = [];
     if (p.llmText && st) {
@@ -130,7 +132,7 @@ export function runGuardrails(s: AppState, p: Proposal): GuardOutcome {
       llmOk = v.ok;
       llmBad = v.bad;
     }
-    add("numeric", "Numeric validation", grossOk && amountOk && llmOk, !grossOk ? `Extracted gross ${inr(ex?.gross ?? 0)} ≠ internal order records ${inr(st?.gross ?? 0)}.` : !amountOk ? `Dispute amount ${inr(a.amount)} ≠ deduction on record.` : !llmOk ? `LLM clause text cites figures not in state: ${llmBad.join(", ")}.` : `Gross ${inr(st!.gross)} and deduction ${inr(a.amount)} reconcile to order records.`);
+    add("numeric", "Numeric validation", grossOk && amountOk && netOk && llmOk, !grossOk ? `Extracted gross ${inr(ex?.gross ?? 0)} ≠ internal order records ${inr(st?.gross ?? 0)}.` : !amountOk ? `Dispute amount ${inr(a.amount)} ≠ deduction on record.` : !netOk ? `Notice net payable ${inr(ex?.netPayable ?? 0)} ≠ reconciled net ${inr(expectedNet)}.` : !llmOk ? `LLM clause text cites figures not in state: ${llmBad.join(", ")}.` : `Gross ${inr(st!.gross)}, deduction ${inr(a.amount)}, and net payable ${inr(expectedNet)} reconcile to order records.`);
   }
   if (a.type === "RELEASE_PAYOUT") {
     const po = s.purchaseOrders.find((x) => x.id === a.poId);

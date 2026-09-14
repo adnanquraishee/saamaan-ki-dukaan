@@ -17,9 +17,10 @@ export type Command =
   | { type: "scenario"; id: ScenarioId }
   | { type: "resolveEscalation"; id: string; decision: "authorise" | "hold" }
   | { type: "setSetting"; key: keyof Settings; value: boolean | number }
-  | { type: "reset" };
+  | { type: "reset" }
+  | { type: "supportTicket"; ticket: { ref: string; category: string; reason: string; orderId?: string; customerName?: string; message: string } };
 
-export const REMOTE_ALLOWED: Command["type"][] = ["placeOrder", "requestReturn"];
+export const REMOTE_ALLOWED: Command["type"][] = ["placeOrder", "requestReturn", "supportTicket"];
 
 export function applyCommand(d: Draft<AppState>, cmd: Command): boolean {
   switch (cmd.type) {
@@ -79,6 +80,13 @@ export function applyCommand(d: Draft<AppState>, cmd: Command): boolean {
       (d.settings as unknown as Record<string, unknown>)[cmd.key] = cmd.value;
       logDecision(d, { agentId: "human", kind: "human", title: "Operator · setting changed", summary: `${cmd.key} → ${String(cmd.value)}`, reasoning: cmd.key === "injectionDetection" && !cmd.value ? "Injection detection disabled to demonstrate that downstream guardrails still hold." : "Manual control." });
       return true;
+    case "supportTicket": {
+      const t = cmd.ticket;
+      if (d.decisions.some((x) => x.details?.ticketRef === t.ref)) return true;
+      // customer text is untrusted: stored as data in the ticket, never acted upon
+      logDecision(d, { agentId: "human", kind: "escalate", title: `Support · ticket ${t.ref}`, summary: `${t.category.replace(/_/g, " ")}${t.orderId ? ` · ${t.orderId}` : ""}${t.customerName ? ` · ${t.customerName.slice(0, 40)}` : ""}`, reasoning: `${t.reason.slice(0, 200)} — customer wrote: “${t.message.slice(0, 300)}”`, details: { ticketRef: t.ref, category: t.category, orderId: t.orderId } });
+      return true;
+    }
     case "reset": {
       const fresh = createInitialState();
       const lock = d.engine;

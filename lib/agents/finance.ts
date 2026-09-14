@@ -51,16 +51,22 @@ export const financeAgent: Agent<{ s: AppState }> = {
       const ex = m.extracted as unknown as SettlementIntake & { clauseVerdict?: { permitted: boolean; quote: string; source: string } };
       const unexplained = ex.otherDeductions.reduce((a, d) => a + d.amount, 0);
       if (unexplained <= 500) continue;
+      const expectedNet = st.gross - st.expectedCommission - unexplained;
+      const grossMatches = ex.gross !== null && Math.abs(ex.gross - st.gross) <= 1;
+      const deductionMatches = Math.abs(unexplained - (st.claimedDeduction ?? 0)) <= 1;
+      const netMatches = ex.netPayable !== null && Math.abs(ex.netPayable - expectedNet) <= 1;
+      const labelsValid = ex.otherDeductions.every((d) => d.label.trim().length >= 3 && d.amount > 0);
+      if (!grossMatches || !deductionMatches || !netMatches || !labelsValid) continue;
       const citations = retrieve(`${st.marketplace} commission structure no other deduction may be applied unless itemised dispute settlement`, { k: 2, sourcePrefix: "marketplace-" });
       out.push(
         propose("finance", { type: "RAISE_DISPUTE", settlementId: st.id, amount: unexplained, clause: ex.clauseVerdict?.quote ?? "No other deduction may be applied to a settlement unless itemised under sections 3–5 of this policy." }, {
-          reasoning: `${st.id} from ${st.marketplace}: gross ${inr(ex.gross ?? 0)} over ${ex.orderCount} orders. Commission recomputed from the policy table matches; unexplained deduction${ex.otherDeductions.length > 1 ? "s" : ""} ${ex.otherDeductions.map((d) => `"${d.label}" ${inr(d.amount)}`).join(", ")} has no basis in sections 3–5. Dispute within the 30-day window.`,
-          confidence: 0.83,
+          reasoning: `${st.id} reconciles to internal records: gross ${inr(ex.gross ?? 0)}, expected commission/fees ${inr(st.expectedCommission)}, and net payable ${inr(ex.netPayable ?? 0)}. Unexplained deduction${ex.otherDeductions.length > 1 ? "s" : ""} ${ex.otherDeductions.map((d) => `"${d.label}" ${inr(d.amount)}`).join(", ")} totals ${inr(unexplained)} and has no policy basis. Dispute within the 30-day window.`,
+          confidence: Math.min(0.95, 0.78 + Math.min(0.17, unexplained / Math.max(1, st.gross))),
           costImpact: -unexplained,
           citations,
           derivedFromUntrusted: true,
           llmText: ex.clauseVerdict?.quote,
-          meta: { settlementId: st.id, extracted: ex, internalGross: st.gross, messageId: m.id, extractionSource: (m.extracted as { _source?: string })._source },
+          meta: { settlementId: st.id, extracted: ex, internalGross: st.gross, expectedNet, reconciliation: { grossMatches, deductionMatches, netMatches, labelsValid }, messageId: m.id, extractionSource: (m.extracted as { _source?: string })._source },
         }),
       );
     }

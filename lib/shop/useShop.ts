@@ -7,7 +7,7 @@ import { sendRemote, useRemote } from "@/lib/remote/relayClient";
 import { useApp } from "@/lib/store/store";
 import { dispatch } from "@/lib/store/sync";
 import { useUi } from "@/lib/store/ui";
-import type { Courier, Order, Product, Region, ReturnRequest, WarehouseId } from "@/lib/types";
+import type { Courier, Order, Product, Region, ReturnRequest, Shipment, WarehouseId } from "@/lib/types";
 
 export interface ShopData {
   ready: boolean;
@@ -17,6 +17,7 @@ export interface ShopData {
   inventory: Record<string, Record<WarehouseId, number>>;
   couriers: Courier[];
   orders: Order[];
+  shipments: Shipment[];
   returns: ReturnRequest[];
   hot: Set<string>;
 }
@@ -29,16 +30,17 @@ export function useShop(): ShopData {
   const couriers = useApp((s) => s.couriers);
   const orders = useApp((s) => s.orders);
   const returns = useApp((s) => s.returns);
+  const shipments = useApp((s) => s.shipments);
   const forecasts = useApp((s) => s.forecasts);
   const tick = useApp((s) => s.clock.tick);
   const snap = useRemote((s) => s.snapshot);
   return useMemo(() => {
     if (mode === "remote") {
-      return { ready: !!snap, mode, tick: snap?.tick ?? 0, catalog: snap?.catalog ?? [], inventory: snap?.inventory ?? {}, couriers: snap?.couriers ?? [], orders: snap?.orders ?? [], returns: snap?.returns ?? [], hot: new Set(snap?.forecastsHot ?? []) };
+      return { ready: !!snap, mode, tick: snap?.tick ?? 0, catalog: snap?.catalog ?? [], inventory: snap?.inventory ?? {}, couriers: snap?.couriers ?? [], orders: snap?.orders ?? [], shipments: snap?.shipments ?? [], returns: snap?.returns ?? [], hot: new Set(snap?.forecastsHot ?? []) };
     }
     const hot = new Set(Object.entries(forecasts).filter(([, f]) => f.velocityMult >= 2.5).map(([k]) => k));
-    return { ready: hydrated, mode, tick, catalog, inventory, couriers, orders, returns, hot };
-  }, [mode, hydrated, snap, catalog, inventory, couriers, orders, returns, forecasts, tick]);
+    return { ready: hydrated, mode, tick, catalog, inventory, couriers, orders, shipments, returns, hot };
+  }, [mode, hydrated, snap, catalog, inventory, couriers, orders, shipments, returns, forecasts, tick]);
 }
 
 export function sendShopCommand(cmd: Command) {

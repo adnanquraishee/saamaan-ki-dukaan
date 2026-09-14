@@ -56,6 +56,36 @@ body {
 .hero-note { position: absolute; right: 5%; top: 22%; z-index: 4; font-family: monospace; font-size: 10px; letter-spacing: .16em; line-height: 1.8; color: #78716c; }.hero-note b { color: #c2410c; font-weight: 500; }
 .hero-scroll { position: absolute; bottom: 7%; left: 5%; z-index: 4; font-family: monospace; font-size: 10px; letter-spacing: .2em; color: #78716c; }
 .dashboard-tab-panel { animation: tab-enter .38s cubic-bezier(.22,.8,.25,1) both; }
+.workflow-node { animation: workflow-pulse 3s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 120ms); }.workflow-arrow { position: absolute; right: -11px; top: 34%; z-index: 2; color: #64748b; font-size: 18px; }
+.order-flow-3d { perspective: 1100px; }.order-agent-card { min-height: 154px; transform-style: preserve-3d; animation: agent-arrive .45s cubic-bezier(.18,.82,.26,1) both; }.order-agent-face { transition: transform .28s ease, box-shadow .28s ease, border-color .28s ease; transform: rotateX(1deg) rotateY(-1deg) translateZ(0); }.order-agent-card:hover .order-agent-face { transform: rotateX(7deg) rotateY(-7deg) translate3d(0,-7px,20px); box-shadow: 12px 16px 30px rgba(0,0,0,.35); }.order-agent-popup { position: absolute; z-index: 20; left: 50%; bottom: calc(100% + 10px); width: min(250px, 80vw); padding: 12px; border: 1px solid rgba(76,225,214,.45); border-radius: 7px; background: rgba(7,13,19,.97); color: #9fb0c0; font-size: 11px; line-height: 1.45; box-shadow: 0 18px 40px rgba(0,0,0,.45); opacity: 0; pointer-events: none; transform: translate3d(-50%,8px,20px) rotateX(8deg); transition: opacity .2s ease, transform .2s ease; }.order-agent-popup::after { content: ""; position: absolute; left: calc(50% - 6px); top: 100%; border: 6px solid transparent; border-top-color: rgba(76,225,214,.45); }.order-agent-card:hover .order-agent-popup { opacity: 1; transform: translate3d(-50%,0,35px) rotateX(0); }.order-agent-card:nth-child(even) { transform: translateY(12px); } @keyframes agent-arrive { from { opacity: 0; transform: translate3d(0,18px,-40px) rotateX(-10deg); } to { opacity: 1; transform: translate3d(0,0,0) rotateX(0); } }
+.route-map { perspective: 900px; background: radial-gradient(circle at 55% 35%, rgba(76,225,214,.12), transparent 35%), #081019; }.route-map-grid { background-image: linear-gradient(rgba(76,225,214,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(76,225,214,.08) 1px, transparent 1px); background-size: 38px 38px; transform: perspective(600px) rotateX(53deg) scale(1.5) translateY(16%); transform-origin: bottom; }.route-node { position: absolute; z-index: 3; transform: translate(-50%,-50%); font-family: ui-monospace, monospace; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }.route-node::before { content: ""; display: block; margin: 0 auto 5px; border-radius: 999px; }.route-node.warehouse::before { width: 13px; height: 13px; background: #4ce1d6; box-shadow: 0 0 16px rgba(76,225,214,.9); }.route-node.region { color: #8fa1b3; }.route-node.region::before { width: 7px; height: 7px; background: #64748b; }
+.order-route-map .route-node i { display: block; width: 7px; height: 7px; margin: 0 auto 5px; border-radius: 999px; background: #475569; }.order-route-map .route-node i.available { background: #4ade80; box-shadow: 0 0 10px rgba(74,222,128,.65); }.order-route-map .route-node.selected i { background: #4ce1d6; box-shadow: 0 0 12px rgba(76,225,214,.9); }.order-route-map .route-node.selected { color: #e5f7f5; }
+@keyframes workflow-pulse { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
 @keyframes tab-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 640px) { .hero-object { left: 70%; top: 47%; width: 75vw; opacity: .9; }.hero-copy { padding-top: 3rem; }.hero-word-top { top: 25%; }.hero-word-bottom { bottom: 18%; left: 5%; } }
 @media (prefers-reduced-motion: reduce) { .float-3d, .card-3d, .dashboard-tab-panel { animation: none; transition: none; } }
+@keyframes arcDraw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.arc {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: arcDraw 1.6s ease-out forwards;
+}
+@keyframes flowDash {
+  to { stroke-dashoffset: -24; }
+}
+.flow {
+  stroke-dasharray: 4 8;
+  animation: flowDash 1.2s linear infinite;
+}
+@keyframes ping {
+  0% { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+.ping {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ping 1.8s ease-out infinite;
+}
